@@ -3,102 +3,142 @@
 #ifndef MATRIX_H
 #define MATRIX_H
 
-/* Uncomment the below line to use CBLAS */
-// #define CRANIUM_USE_CBLAS
-#ifdef CRANIUM_USE_CBLAS
-#include <cblas.h>
-#endif
-
-// represents user-supplied training data
-typedef struct DataSet_ {
-    size_t rows;
-    size_t cols;
-    float** data;
-} DataSet;
-
-// represents a matrix of data in row-major order
+// Represents a matrix of data in row-major order
+// Can optionally be a "view" into another matrix's data (owns_data = 0)
 typedef struct Matrix_ {
     size_t rows;
     size_t cols;
+    size_t stride;    // actual number of floats between row starts (for views)
     float* data;
+    int owns_data;    // if 0, this is a view and should not free data
 } Matrix;
 
-// create dataset given user data
-static DataSet* createDataSet(size_t rows, size_t cols, float** data);
+// Represents training data - now uses contiguous storage
+typedef struct DataSet_ {
+    size_t rows;
+    size_t cols;
+    float* data;      // contiguous row-major storage
+} DataSet;
 
-// uses memory of the original data to split dataset into batches
-static DataSet** createBatches(DataSet* allData, int numBatches);
+// Memory pool for reducing allocations during training
+typedef struct MatrixPool_ {
+    float* buffer;
+    size_t capacity;
+    size_t used;
+} MatrixPool;
 
-// split a dataset into row matrices
-static Matrix** splitRows(DataSet* dataset);
+// Create a memory pool with given capacity (in floats)
+static MatrixPool* createMatrixPool(size_t capacity);
 
-// shuffle two datasets, maintaining alignment between their rows
+// Reset pool for reuse (doesn't free memory)
+static void resetMatrixPool(MatrixPool* pool);
+
+// Allocate from pool (returns NULL if insufficient space)
+static float* poolAlloc(MatrixPool* pool, size_t count);
+
+// Destroy pool
+static void destroyMatrixPool(MatrixPool* pool);
+
+// Create dataset with contiguous storage
+static DataSet* createDataSet(size_t rows, size_t cols, float* data);
+
+// Create empty dataset (allocates memory)
+static DataSet* createDataSetEmpty(size_t rows, size_t cols);
+
+// Get pointer to row i of dataset
+static float* getDataSetRow(DataSet* dataset, size_t row);
+
+// Get element from dataset
+static float getDataSetElement(DataSet* dataset, size_t row, size_t col);
+
+// Set element in dataset
+static void setDataSetElement(DataSet* dataset, size_t row, size_t col, float val);
+
+// Shuffle two datasets together maintaining alignment
 static void shuffleTogether(DataSet* A, DataSet* B);
 
-// destroy dataset
+// Destroy dataset
 static void destroyDataSet(DataSet* dataset);
 
-// convert dataset to matrix
+// Convert dataset to matrix (creates a view, no copy)
+static Matrix* dataSetToMatrixView(DataSet* dataset);
+
+// Convert dataset to matrix (creates a copy)
 static Matrix* dataSetToMatrix(DataSet* dataset);
 
-// creates a matrix given data
+// Creates a matrix given data (takes ownership)
 static Matrix* createMatrix(size_t rows, size_t cols, float* data);
 
-// creates a matrix zeroed out
+// Creates a matrix view (does not own data)
+static Matrix* createMatrixView(size_t rows, size_t cols, size_t stride, float* data);
+
+// Creates a view of a single row of a matrix
+static Matrix* createRowView(Matrix* mat, size_t row);
+
+// Creates a view of a single row of a dataset
+static Matrix* createDataSetRowView(DataSet* dataset, size_t row);
+
+// Creates a matrix zeroed out
 static Matrix* createMatrixZeroes(size_t rows, size_t cols);
 
-// get an element of a matrix
+// Creates a matrix using pool memory (view, doesn't own data)
+static Matrix* createMatrixFromPool(MatrixPool* pool, size_t rows, size_t cols);
+
+// Get an element of a matrix
 static float getMatrix(Matrix* mat, size_t row, size_t col);
 
-// set an element of a matrix
+// Set an element of a matrix
 static void setMatrix(Matrix* mat, size_t row, size_t col, float val);
 
-// sets the values in $to equal to values in $from
+// Sets the values in $to equal to values in $from
 static void copyValuesInto(Matrix* from, Matrix* to);
 
-// prints the entries of a matrix
+// Prints the entries of a matrix
 static void printMatrix(Matrix* input);
 
-// sets each entry in matrix to 0
+// Sets each entry in matrix to 0
 static void zeroMatrix(Matrix* orig);
 
-// returns transpose of matrix
+// Returns transpose of matrix
 static Matrix* transpose(Matrix* orig);
 
-// transposes matrix and places data into $origT
+// Transposes matrix and places data into $origT
 static void transposeInto(Matrix* orig, Matrix* origT);
 
-// adds two matrices and returns result
-static Matrix* add(Matrix* A, Matrix* b);
+// Adds two matrices and returns result
+static Matrix* add(Matrix* A, Matrix* B);
 
-// adds $from to $to and places result in $to
+// Adds $from to $to and places result in $to
 static void addTo(Matrix* from, Matrix* to);
 
-// adds $B, a row vector, to each row of $A
+// Adds $B, a row vector, to each row of $A
 static Matrix* addToEachRow(Matrix* A, Matrix* B);
 
-// multiplies every element of $orig by $C
+// Adds $B, a row vector, to each row of $A, stores in $into
+static void addToEachRowInto(Matrix* A, Matrix* B, Matrix* into);
+
+// Multiplies every element of $orig by $C
 static void scalarMultiply(Matrix* orig, float c);
 
-// multiplies $A and $B (ordering: AB) and returns product matrix
+// Multiplies $A and $B (ordering: AB) and returns product matrix
 static Matrix* multiply(Matrix* A, Matrix* B);
 
-// multiplies $A and $B (ordering: AB) and places values into $into
+// Multiplies $A and $B (ordering: AB) and places values into $into
 static void multiplyInto(Matrix* A, Matrix* B, Matrix* into);
 
-// element-wise multiplcation
+// Element-wise multiplication
 static Matrix* hadamard(Matrix* A, Matrix* B);
 
-// places values of hadamard product of $A and $B into $into
+// Places values of hadamard product of $A and $B into $into
 static void hadamardInto(Matrix* A, Matrix* B, Matrix* into);
 
-// returns a shallow copy of input matrix
+// Returns a deep copy of input matrix
 static Matrix* copy(Matrix* orig);
 
-// returns 1 if matrices are equal, 0 otherwise
+// Returns 1 if matrices are equal, 0 otherwise
 static int equals(Matrix* A, Matrix* B);
 
-// frees a matrix and its data
+// Frees a matrix and its data (if owned)
 static void destroyMatrix(Matrix* matrix);
 
 
@@ -106,7 +146,33 @@ static void destroyMatrix(Matrix* matrix);
     Begin functions.
 */
 
-static DataSet* createDataSet(size_t rows, size_t cols, float** data){
+MatrixPool* createMatrixPool(size_t capacity) {
+    MatrixPool* pool = (MatrixPool*)malloc(sizeof(MatrixPool));
+    pool->buffer = (float*)malloc(sizeof(float) * capacity);
+    pool->capacity = capacity;
+    pool->used = 0;
+    return pool;
+}
+
+void resetMatrixPool(MatrixPool* pool) {
+    pool->used = 0;
+}
+
+float* poolAlloc(MatrixPool* pool, size_t count) {
+    if (pool->used + count > pool->capacity) {
+        return NULL;
+    }
+    float* ptr = pool->buffer + pool->used;
+    pool->used += count;
+    return ptr;
+}
+
+void destroyMatrixPool(MatrixPool* pool) {
+    free(pool->buffer);
+    free(pool);
+}
+
+DataSet* createDataSet(size_t rows, size_t cols, float* data) {
     DataSet* dataset = (DataSet*)malloc(sizeof(DataSet));
     dataset->rows = rows;
     dataset->cols = cols;
@@ -114,199 +180,253 @@ static DataSet* createDataSet(size_t rows, size_t cols, float** data){
     return dataset;
 }
 
-DataSet** createBatches(DataSet* allData, int numBatches){
-    DataSet** batches = (DataSet**)malloc(sizeof(DataSet*) * numBatches);
-    int remainder = allData->rows % numBatches;
-    int i;
-    int curRow = 0;
-    for (i = 0; i < numBatches; i++){
-        size_t batchSize = allData->rows / numBatches;
-        if (remainder-- > 0){
-            batchSize++;
-        }
-        batches[i] = createDataSet(batchSize, allData->cols, allData->data + curRow);
-        curRow += batchSize;
-    }
-    return batches;
+DataSet* createDataSetEmpty(size_t rows, size_t cols) {
+    DataSet* dataset = (DataSet*)malloc(sizeof(DataSet));
+    dataset->rows = rows;
+    dataset->cols = cols;
+    dataset->data = (float*)calloc(rows * cols, sizeof(float));
+    return dataset;
 }
 
-static Matrix** splitRows(DataSet* dataset){
-    Matrix** rows = (Matrix**)malloc(sizeof(Matrix*) * dataset->rows);
-    int i;
-    for (i = 0; i < dataset->rows; i++){
-        rows[i] = createMatrix(1, dataset->cols, dataset->data[i]);
-    }
-    return rows;
+float* getDataSetRow(DataSet* dataset, size_t row) {
+    return dataset->data + row * dataset->cols;
 }
 
-void shuffleTogether(DataSet* A, DataSet* B){
+float getDataSetElement(DataSet* dataset, size_t row, size_t col) {
+    return dataset->data[row * dataset->cols + col];
+}
+
+void setDataSetElement(DataSet* dataset, size_t row, size_t col, float val) {
+    dataset->data[row * dataset->cols + col] = val;
+}
+
+void shuffleTogether(DataSet* A, DataSet* B) {
     assert(A->rows == B->rows);
-    int i;
-    for (i = 0; i < A->rows - 1; i++){
+    size_t colsA = A->cols;
+    size_t colsB = B->cols;
+    
+    // Temporary buffers for swapping rows
+    float* tmpA = (float*)malloc(sizeof(float) * colsA);
+    float* tmpB = (float*)malloc(sizeof(float) * colsB);
+    
+    size_t i;
+    for (i = 0; i < A->rows - 1; i++) {
         size_t j = i + rand() / (RAND_MAX / (A->rows - i) + 1);
-        float* tmpA = A->data[j];
-        A->data[j] = A->data[i];
-        A->data[i] = tmpA;
-        float* tmpB = B->data[j];
-        B->data[j] = B->data[i];
-        B->data[i] = tmpB;
+        if (i != j) {
+            // Swap rows in A
+            memcpy(tmpA, getDataSetRow(A, i), sizeof(float) * colsA);
+            memcpy(getDataSetRow(A, i), getDataSetRow(A, j), sizeof(float) * colsA);
+            memcpy(getDataSetRow(A, j), tmpA, sizeof(float) * colsA);
+            
+            // Swap rows in B
+            memcpy(tmpB, getDataSetRow(B, i), sizeof(float) * colsB);
+            memcpy(getDataSetRow(B, i), getDataSetRow(B, j), sizeof(float) * colsB);
+            memcpy(getDataSetRow(B, j), tmpB, sizeof(float) * colsB);
+        }
     }
+    
+    free(tmpA);
+    free(tmpB);
 }
 
-static void destroyDataSet(DataSet* dataset){
-    int i;
-    for (i = 0; i < dataset->rows; i++){
-        free(dataset->data[i]);
-    }
+void destroyDataSet(DataSet* dataset) {
     free(dataset->data);
     free(dataset);
 }
 
-static Matrix* dataSetToMatrix(DataSet* dataset){
-    Matrix* convert = (Matrix*)malloc(sizeof(Matrix));
-    convert->rows = dataset->rows;
-    convert->cols = dataset->cols;
-    convert->data = (float*)malloc(sizeof(float) * dataset->rows * dataset->cols);
-    int i, j;
-    for (i = 0; i < dataset->rows; i++){
-        for (j = 0; j < dataset->cols; j++){
-            setMatrix(convert, i, j, dataset->data[i][j]);
+Matrix* dataSetToMatrixView(DataSet* dataset) {
+    return createMatrixView(dataset->rows, dataset->cols, dataset->cols, dataset->data);
+}
+
+Matrix* dataSetToMatrix(DataSet* dataset) {
+    float* data = (float*)malloc(sizeof(float) * dataset->rows * dataset->cols);
+    memcpy(data, dataset->data, sizeof(float) * dataset->rows * dataset->cols);
+    return createMatrix(dataset->rows, dataset->cols, data);
+}
+
+Matrix* createMatrix(size_t rows, size_t cols, float* data) {
+    assert(rows > 0 && cols > 0);
+    Matrix* matrix = (Matrix*)malloc(sizeof(Matrix));
+    matrix->rows = rows;
+    matrix->cols = cols;
+    matrix->stride = cols;
+    matrix->data = data;
+    matrix->owns_data = 1;
+    return matrix;
+}
+
+Matrix* createMatrixView(size_t rows, size_t cols, size_t stride, float* data) {
+    assert(rows > 0 && cols > 0);
+    Matrix* matrix = (Matrix*)malloc(sizeof(Matrix));
+    matrix->rows = rows;
+    matrix->cols = cols;
+    matrix->stride = stride;
+    matrix->data = data;
+    matrix->owns_data = 0;
+    return matrix;
+}
+
+Matrix* createRowView(Matrix* mat, size_t row) {
+    assert(row < mat->rows);
+    return createMatrixView(1, mat->cols, mat->stride, mat->data + row * mat->stride);
+}
+
+Matrix* createDataSetRowView(DataSet* dataset, size_t row) {
+    assert(row < dataset->rows);
+    return createMatrixView(1, dataset->cols, dataset->cols, getDataSetRow(dataset, row));
+}
+
+Matrix* createMatrixZeroes(size_t rows, size_t cols) {
+    assert(rows > 0 && cols > 0);
+    Matrix* matrix = (Matrix*)malloc(sizeof(Matrix));
+    matrix->rows = rows;
+    matrix->cols = cols;
+    matrix->stride = cols;
+    matrix->data = (float*)calloc(rows * cols, sizeof(float));
+    matrix->owns_data = 1;
+    return matrix;
+}
+
+Matrix* createMatrixFromPool(MatrixPool* pool, size_t rows, size_t cols) {
+    float* data = poolAlloc(pool, rows * cols);
+    if (data == NULL) return NULL;
+    memset(data, 0, sizeof(float) * rows * cols);
+    return createMatrixView(rows, cols, cols, data);
+}
+
+float getMatrix(Matrix* mat, size_t row, size_t col) {
+    return mat->data[row * mat->stride + col];
+}
+
+void setMatrix(Matrix* mat, size_t row, size_t col, float val) {
+    mat->data[row * mat->stride + col] = val;
+}
+
+void copyValuesInto(Matrix* from, Matrix* to) {
+    assert(from->rows == to->rows && from->cols == to->cols);
+    if (from->stride == from->cols && to->stride == to->cols) {
+        // Both contiguous, use memcpy
+        memcpy(to->data, from->data, sizeof(float) * to->rows * to->cols);
+    } else {
+        // Handle strided copies
+        size_t i;
+        for (i = 0; i < from->rows; i++) {
+            memcpy(to->data + i * to->stride, 
+                   from->data + i * from->stride, 
+                   sizeof(float) * from->cols);
         }
     }
-    return convert;
 }
 
-Matrix* createMatrix(size_t rows, size_t cols, float* data){
-    assert(rows > 0 && cols > 0);
-    Matrix* matrix = (Matrix*)malloc(sizeof(Matrix));
-    matrix->rows = rows;
-    matrix->cols = cols;
-    matrix->data = data;
-    return matrix;
-}
-
-Matrix* createMatrixZeroes(size_t rows, size_t cols){
-    assert(rows > 0 && cols > 0);
-    Matrix* matrix = (Matrix*)malloc(sizeof(Matrix));
-    matrix->rows = rows;
-    matrix->cols = cols;
-    float* data = (float*)calloc(rows * cols, sizeof(float));
-    matrix->data = data;
-    return matrix;
-}
-
-static float getMatrix(Matrix* mat, size_t row, size_t col){
-    return mat->data[row * mat->cols + col];
-}
-
-static void setMatrix(Matrix* mat, size_t row, size_t col, float val){
-    mat->data[row * mat->cols + col] = val;
-}
-
-void copyValuesInto(Matrix* from, Matrix* to){
-    assert(from->rows == to->rows && from->cols == to->cols);
-    memcpy(to->data, from->data, sizeof(float) * to->rows * to->cols);
-}
-
-void printMatrix(Matrix* input){
-    int i, j;
-    for (i = 0; i < input->rows; i++){
+void printMatrix(Matrix* input) {
+    size_t i, j;
+    for (i = 0; i < input->rows; i++) {
         printf("\n");
-        for (j = 0; j < input->cols; j++){
+        for (j = 0; j < input->cols; j++) {
             printf("%.2f ", getMatrix(input, i, j));
         }
     }
     printf("\n");
 }
 
-void zeroMatrix(Matrix* orig){
-    memset(orig->data, 0, orig->rows * orig->cols * sizeof(float));
-}
-
-Matrix* transpose(Matrix* orig){
-    float* data = (float*)malloc(sizeof(float) * orig->rows * orig->cols);
-    Matrix* transpose = createMatrix(orig->cols, orig->rows, data);
-    int i, j;
-    for (i = 0; i < orig->rows; i++){
-        for (j = 0; j < orig->cols; j++){
-            setMatrix(transpose, i, j, getMatrix(orig, i, j));
+void zeroMatrix(Matrix* orig) {
+    if (orig->stride == orig->cols) {
+        memset(orig->data, 0, orig->rows * orig->cols * sizeof(float));
+    } else {
+        size_t i;
+        for (i = 0; i < orig->rows; i++) {
+            memset(orig->data + i * orig->stride, 0, orig->cols * sizeof(float));
         }
     }
-    return transpose;
 }
 
-void transposeInto(Matrix* orig, Matrix* origT){
+Matrix* transpose(Matrix* orig) {
+    float* data = (float*)malloc(sizeof(float) * orig->rows * orig->cols);
+    Matrix* trans = createMatrix(orig->cols, orig->rows, data);
+    size_t i, j;
+    for (i = 0; i < orig->rows; i++) {
+        for (j = 0; j < orig->cols; j++) {
+            setMatrix(trans, j, i, getMatrix(orig, i, j));
+        }
+    }
+    return trans;
+}
+
+void transposeInto(Matrix* orig, Matrix* origT) {
     assert(orig->rows == origT->cols && orig->cols == origT->rows);
-    int i, j;
-    for (i = 0; i < orig->rows; i++){
-        for (j = 0; j < orig->cols; j++){
+    size_t i, j;
+    for (i = 0; i < orig->rows; i++) {
+        for (j = 0; j < orig->cols; j++) {
             setMatrix(origT, j, i, getMatrix(orig, i, j));
         }
     }
 }
 
-Matrix* add(Matrix* A, Matrix* B){
+Matrix* add(Matrix* A, Matrix* B) {
     assert(A->rows == B->rows && A->cols == B->cols);
-    float* data = (float*)malloc(sizeof(float) * A->rows * B->rows);
+    float* data = (float*)malloc(sizeof(float) * A->rows * A->cols);
     Matrix* result = createMatrix(A->rows, A->cols, data);
-    int i, j;
-    for (i = 0; i < A->rows; i++){
-        for (j = 0; j < A->cols; j++){
+    size_t i, j;
+    for (i = 0; i < A->rows; i++) {
+        for (j = 0; j < A->cols; j++) {
             setMatrix(result, i, j, getMatrix(B, i, j) + getMatrix(A, i, j));
         }
     }
     return result;
 }
 
-void addTo(Matrix* from, Matrix* to){
+void addTo(Matrix* from, Matrix* to) {
     assert(from->rows == to->rows && from->cols == to->cols);
-    int i, j;
-    for (i = 0; i < from->rows; i++){
-        for (j = 0; j < from->cols; j++){
+    size_t i, j;
+    for (i = 0; i < from->rows; i++) {
+        for (j = 0; j < from->cols; j++) {
             setMatrix(to, i, j, getMatrix(from, i, j) + getMatrix(to, i, j));
         }
     }
 }
 
-// add B to each row of A
-Matrix* addToEachRow(Matrix* A, Matrix* B){
+Matrix* addToEachRow(Matrix* A, Matrix* B) {
     assert(A->cols == B->cols && B->rows == 1);
     float* data = (float*)malloc(sizeof(float) * A->rows * A->cols);
     Matrix* result = createMatrix(A->rows, A->cols, data);
-    int i, j;
-    for (i = 0; i < A->rows; i++){
-        for (j = 0; j < A->cols; j++){
+    size_t i, j;
+    for (i = 0; i < A->rows; i++) {
+        for (j = 0; j < A->cols; j++) {
             setMatrix(result, i, j, getMatrix(A, i, j) + getMatrix(B, 0, j));
         }
     }
     return result;
 }
 
-void scalarMultiply(Matrix* orig, float c){
-    int i, j;
-    for (i = 0; i < orig->rows; i++){
-        for (j = 0; j < orig->cols; j++){
+void addToEachRowInto(Matrix* A, Matrix* B, Matrix* into) {
+    assert(A->cols == B->cols && B->rows == 1);
+    assert(A->rows == into->rows && A->cols == into->cols);
+    size_t i, j;
+    for (i = 0; i < A->rows; i++) {
+        for (j = 0; j < A->cols; j++) {
+            setMatrix(into, i, j, getMatrix(A, i, j) + getMatrix(B, 0, j));
+        }
+    }
+}
+
+void scalarMultiply(Matrix* orig, float c) {
+    size_t i, j;
+    for (i = 0; i < orig->rows; i++) {
+        for (j = 0; j < orig->cols; j++) {
             setMatrix(orig, i, j, getMatrix(orig, i, j) * c);
         }
     }
 }
 
-Matrix* multiply(Matrix* A, Matrix* B){
+Matrix* multiply(Matrix* A, Matrix* B) {
     assert(A->cols == B->rows);
     float* data = (float*)malloc(sizeof(float) * A->rows * B->cols);
     Matrix* result = createMatrix(A->rows, B->cols, data);
-#ifdef CRANIUM_USE_CBLAS
-    zeroMatrix(result);
-    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, A->rows, B->cols
-    , A->cols, 1, A->data, A->cols, B->data, B->cols, 1, result->data, result->cols);
-    return result;
-#endif
-    int i, j;
-    for (i = 0; i < A->rows; i++){
-        for (j = 0; j < B->cols; j++){
+    size_t i, j, k;
+    for (i = 0; i < A->rows; i++) {
+        for (j = 0; j < B->cols; j++) {
             float sum = 0;
-            int k;
-            for (k = 0; k < B->rows; k++){
+            for (k = 0; k < B->rows; k++) {
                 sum += getMatrix(A, i, k) * getMatrix(B, k, j);
             }
             setMatrix(result, i, j, sum);
@@ -315,21 +435,14 @@ Matrix* multiply(Matrix* A, Matrix* B){
     return result;
 }
 
-void multiplyInto(Matrix* A, Matrix* B, Matrix* into){
-#ifdef CRANIUM_USE_CBLAS
-    zeroMatrix(into);
-    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, A->rows, B->cols
-    , A->cols, 1, A->data, A->cols, B->data, B->cols, 1, into->data, into->cols);
-    return;
-#endif
+void multiplyInto(Matrix* A, Matrix* B, Matrix* into) {
     assert(A->cols == B->rows);
     assert(A->rows == into->rows && B->cols == into->cols);
-    int i, j;
-    for (i = 0; i < A->rows; i++){
-        for (j = 0; j < B->cols; j++){
+    size_t i, j, k;
+    for (i = 0; i < A->rows; i++) {
+        for (j = 0; j < B->cols; j++) {
             float sum = 0;
-            int k;
-            for (k = 0; k < B->rows; k++){
+            for (k = 0; k < B->rows; k++) {
                 sum += getMatrix(A, i, k) * getMatrix(B, k, j);
             }
             setMatrix(into, i, j, sum);
@@ -337,47 +450,45 @@ void multiplyInto(Matrix* A, Matrix* B, Matrix* into){
     }
 }
 
-Matrix* hadamard(Matrix* A, Matrix* B){
+Matrix* hadamard(Matrix* A, Matrix* B) {
     assert(A->rows == B->rows && A->cols == B->cols);
     float* data = (float*)malloc(sizeof(float) * A->rows * A->cols);
     Matrix* result = createMatrix(A->rows, A->cols, data);
-    int i, j;
-    for (i = 0; i < A->rows; i++){
-        for (j = 0; j < A->cols; j++){
+    size_t i, j;
+    for (i = 0; i < A->rows; i++) {
+        for (j = 0; j < A->cols; j++) {
             setMatrix(result, i, j, getMatrix(A, i, j) * getMatrix(B, i, j));
         }
     }
     return result;
 }
 
-void hadamardInto(Matrix* A, Matrix* B, Matrix* into){
+void hadamardInto(Matrix* A, Matrix* B, Matrix* into) {
     assert(A->rows == B->rows && A->cols == B->cols);
     assert(A->rows == into->rows && A->cols == into->cols);
-    int i, j;
-    for (i = 0; i < A->rows; i++){
-        for (j = 0; j < A->cols; j++){
+    size_t i, j;
+    for (i = 0; i < A->rows; i++) {
+        for (j = 0; j < A->cols; j++) {
             setMatrix(into, i, j, getMatrix(A, i, j) * getMatrix(B, i, j));
         }
     }
 }
 
-Matrix* copy(Matrix* orig){
+Matrix* copy(Matrix* orig) {
     float* data = (float*)malloc(sizeof(float) * orig->rows * orig->cols);
-    memcpy(data, orig->data, sizeof(float) * orig->cols * orig->rows);
-    return createMatrix(orig->rows, orig->cols, data);
+    Matrix* result = createMatrix(orig->rows, orig->cols, data);
+    copyValuesInto(orig, result);
+    return result;
 }
 
-int equals(Matrix* A, Matrix* B){
-    if (A->rows != B->rows){
+int equals(Matrix* A, Matrix* B) {
+    if (A->rows != B->rows || A->cols != B->cols) {
         return 0;
     }
-    if (A->cols != B->cols){
-        return 0;
-    }
-    int i, j;
-    for (i = 0; i < A->rows; i++){
-        for (j = 0; j < A->cols; j++){
-            if (getMatrix(A, i, j) != getMatrix(B, i, j)){
+    size_t i, j;
+    for (i = 0; i < A->rows; i++) {
+        for (j = 0; j < A->cols; j++) {
+            if (getMatrix(A, i, j) != getMatrix(B, i, j)) {
                 return 0;
             }
         }
@@ -385,8 +496,10 @@ int equals(Matrix* A, Matrix* B){
     return 1;
 }
 
-void destroyMatrix(Matrix* matrix){
-    free(matrix->data);
+void destroyMatrix(Matrix* matrix) {
+    if (matrix->owns_data) {
+        free(matrix->data);
+    }
     free(matrix);
 }
 
