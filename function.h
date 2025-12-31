@@ -65,52 +65,86 @@ float linearDeriv(float linearInput) {
 }
 
 void sigmoid(Matrix* input) {
-    size_t i, j;
-    for (i = 0; i < input->rows; i++) {
-        for (j = 0; j < input->cols; j++) {
-            setMatrix(input, i, j, sigmoidFunc(getMatrix(input, i, j)));
+    size_t total = input->rows * input->cols;
+    size_t i;
+    if (input->stride == input->cols) {
+        for (i = 0; i < total; i++) {
+            input->data[i] = 1.0f / (1.0f + expf(-input->data[i]));
+        }
+    } else {
+        size_t r, c;
+        float* row;
+        for (r = 0; r < input->rows; r++) {
+            row = input->data + r * input->stride;
+            for (c = 0; c < input->cols; c++) {
+                row[c] = 1.0f / (1.0f + expf(-row[c]));
+            }
         }
     }
 }
 
 void relu(Matrix* input) {
-    size_t i, j;
-    for (i = 0; i < input->rows; i++) {
-        for (j = 0; j < input->cols; j++) {
-            setMatrix(input, i, j, reluFunc(getMatrix(input, i, j)));
+    size_t total = input->rows * input->cols;
+    size_t i;
+    float val;
+    if (input->stride == input->cols) {
+        for (i = 0; i < total; i++) {
+            val = input->data[i];
+            input->data[i] = val > 0.0f ? val : 0.0f;
+        }
+    } else {
+        size_t r, c;
+        float* row;
+        for (r = 0; r < input->rows; r++) {
+            row = input->data + r * input->stride;
+            for (c = 0; c < input->cols; c++) {
+                val = row[c];
+                row[c] = val > 0.0f ? val : 0.0f;
+            }
         }
     }
 }
 
 void tanH(Matrix* input) {
-    size_t i, j;
-    for (i = 0; i < input->rows; i++) {
-        for (j = 0; j < input->cols; j++) {
-            setMatrix(input, i, j, tanHFunc(getMatrix(input, i, j)));
+    size_t total = input->rows * input->cols;
+    size_t i;
+    if (input->stride == input->cols) {
+        for (i = 0; i < total; i++) {
+            input->data[i] = tanhf(input->data[i]);
+        }
+    } else {
+        size_t r, c;
+        float* row;
+        for (r = 0; r < input->rows; r++) {
+            row = input->data + r * input->stride;
+            for (c = 0; c < input->cols; c++) {
+                row[c] = tanhf(row[c]);
+            }
         }
     }
 }
 
 void softmax(Matrix* input) {
     size_t i, j;
+    float maxVal, summed, invSum;
+    float* row;
     for (i = 0; i < input->rows; i++) {
-        // Find max for numerical stability
-        float maxVal = getMatrix(input, i, 0);
+        row = input->data + i * input->stride;
+        /* Find max for numerical stability */
+        maxVal = row[0];
         for (j = 1; j < input->cols; j++) {
-            float val = getMatrix(input, i, j);
-            if (val > maxVal) maxVal = val;
+            if (row[j] > maxVal) maxVal = row[j];
         }
-        
-        float summed = 0.0f;
+        /* Compute exp and sum */
+        summed = 0.0f;
         for (j = 0; j < input->cols; j++) {
-            float expVal = expf(getMatrix(input, i, j) - maxVal);
-            setMatrix(input, i, j, expVal);
-            summed = summed + expVal;
+            row[j] = expf(row[j] - maxVal);
+            summed = summed + row[j];
         }
-        
-        float invSum = 1.0f / summed;
+        /* Normalize */
+        invSum = 1.0f / summed;
         for (j = 0; j < input->cols; j++) {
-            setMatrix(input, i, j, getMatrix(input, i, j) * invSum);
+            row[j] = row[j] * invSum;
         }
     }
 }
