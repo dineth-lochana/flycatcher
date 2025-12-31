@@ -413,7 +413,8 @@ void scalarMultiply(Matrix* orig, float c) {
     size_t i, j;
     for (i = 0; i < orig->rows; i++) {
         for (j = 0; j < orig->cols; j++) {
-            setMatrix(orig, i, j, getMatrix(orig, i, j) * c);
+            float val = getMatrix(orig, i, j);
+            setMatrix(orig, i, j, val * c);
         }
     }
 }
@@ -427,7 +428,7 @@ Matrix* multiply(Matrix* A, Matrix* B) {
         for (j = 0; j < B->cols; j++) {
             float sum = 0;
             for (k = 0; k < B->rows; k++) {
-                sum += getMatrix(A, i, k) * getMatrix(B, k, j);
+                sum = sum + (getMatrix(A, i, k) * getMatrix(B, k, j));
             }
             setMatrix(result, i, j, sum);
         }
@@ -443,7 +444,7 @@ void multiplyInto(Matrix* A, Matrix* B, Matrix* into) {
         for (j = 0; j < B->cols; j++) {
             float sum = 0;
             for (k = 0; k < B->rows; k++) {
-                sum += getMatrix(A, i, k) * getMatrix(B, k, j);
+                sum = sum + (getMatrix(A, i, k) * getMatrix(B, k, j));
             }
             setMatrix(into, i, j, sum);
         }

@@ -192,7 +192,7 @@ float crossEntropyLoss(Network* network, Matrix* prediction, DataSet* actual,
         for (j = 0; j < prediction->cols; j++) {
             float target = getDataSetElement(actual, i, j);
             float pred = getMatrix(prediction, i, j);
-            total_err += target * logf(MAX(FLT_MIN, pred));
+            total_err = total_err + (target * logf(MAX(FLT_MIN, pred)));
         }
     }
     
@@ -203,7 +203,7 @@ float crossEntropyLoss(Network* network, Matrix* prediction, DataSet* actual,
             for (j = 0; j < weights->rows; j++) {
                 for (k = 0; k < weights->cols; k++) {
                     float w = getMatrix(weights, j, k);
-                    reg_err += w * w;
+                    reg_err = reg_err + (w * w);
                 }
             }
         }
@@ -223,7 +223,7 @@ float meanSquaredError(Network* network, Matrix* prediction, DataSet* actual,
     for (i = 0; i < prediction->rows; i++) {
         for (j = 0; j < prediction->cols; j++) {
             float diff = getDataSetElement(actual, i, j) - getMatrix(prediction, i, j);
-            total_err += diff * diff;
+            total_err = total_err + (diff * diff);
         }
     }
     
@@ -234,7 +234,7 @@ float meanSquaredError(Network* network, Matrix* prediction, DataSet* actual,
             for (j = 0; j < weights->rows; j++) {
                 for (k = 0; k < weights->cols; k++) {
                     float w = getMatrix(weights, j, k);
-                    reg_err += w * w;
+                    reg_err = reg_err + (w * w);
                 }
             }
         }
@@ -291,12 +291,12 @@ float accuracy(Network* network, DataSet* data, DataSet* classes) {
             // Binary case
             int actual = (int)getDataSetElement(classes, i, 0);
             if (actual == predictions[i]) {
-                numCorrect += 1.0f;
+                numCorrect = numCorrect + 1.0f;
             }
         } else {
             // One-hot case
              if (getDataSetElement(classes, i, predictions[i]) == 1.0f) {
-                numCorrect += 1.0f;
+                numCorrect = numCorrect + 1.0f;
             }
         }
     }

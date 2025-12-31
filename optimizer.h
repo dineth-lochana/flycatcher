@@ -281,7 +281,7 @@ void batchGradientDescent(Network* network, DataSet* data, DataSet* classes,
                                 // But for Sigmoid/Tanh/Relu + MSE, we MUST multiply by deriv.
                                 if (network->layers[layer]->activation != softmax) {
                                     float (*deriv)(float) = activationDerivative(network->layers[layer]->activation);
-                                    errorTerm *= deriv(output); 
+                                    errorTerm = errorTerm * deriv(output);
                                 }
                             }
                             // For CrossEntropy + Softmax, delta = (a - y). 

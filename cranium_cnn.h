@@ -99,8 +99,7 @@ static void conv1DForward(Conv1DLayer* layer, Matrix* input, Matrix* output) {
                     for (c = 0; c < layer->inputChannels; ++c) {
                         size_t inputIdx = (inputStartPos + k) * layer->inputChannels + c;
                         size_t weightIdx = k * layer->inputChannels + c;
-                        sum += inputRow[inputIdx] * 
-                               getMatrix(layer->weights, outChan, weightIdx);
+                        sum = sum + inputRow[inputIdx] * getMatrix(layer->weights, outChan, weightIdx);
                     }
                 }
                 
@@ -168,9 +167,9 @@ static void conv1DBackward(Conv1DLayer* layer, Matrix* outputGrad,
                         if (inputGradRow) {
                             float weight = getMatrix(layer->weights, outChan, weightIdx);
                             if (layer->padding > 0) {
-                                paddedInputGrad[inputIdx] += grad * weight;
+                                paddedInputGrad[inputIdx] = paddedInputGrad[inputIdx] + grad * weight;
                             } else {
-                                inputGradRow[inputIdx] += grad * weight;
+                                inputGradRow[inputIdx] = inputGradRow[inputIdx] + (grad * weight);
                             }
                         }
                     }
@@ -181,8 +180,7 @@ static void conv1DBackward(Conv1DLayer* layer, Matrix* outputGrad,
         if (layer->padding > 0 && inputGradRow) {
             for (c = 0; c < layer->inputChannels; ++c) {
                 for (size_t i = 0; i < inputLen; ++i) {
-                    inputGradRow[i * layer->inputChannels + c] += 
-                        paddedInputGrad[(layer->padding + i) * layer->inputChannels + c];
+                    inputGradRow[i * layer->inputChannels + c] = inputGradRow[i * layer->inputChannels + c] + paddedInputGrad[(layer->padding + i) * layer->inputChannels + c];
                 }
             }
         }
@@ -325,7 +323,7 @@ static void dropoutBackward(Dropout* dropout, Matrix* outputGrad, Matrix* inputG
     
     size_t i;
     for (i = 0; i < len; ++i) {
-        inputGrad->data[i] += dropout->mask[i] ? outputGrad->data[i] * scale : 0.0f;
+        inputGrad->data[i] = inputGrad->data[i] + (dropout->mask[i] ? outputGrad->data[i] * scale : 0.0f);
     }
 }
 
@@ -385,7 +383,7 @@ static void layerNormForward(LayerNorm* norm, Matrix* input, Matrix* output) {
         
         double sum = 0.0;
         for (i = 0; i < n; ++i) {
-            sum += x[i];
+            sum = sum + x[i];
         }
         float mean = (float)(sum / n);
         norm->savedMean[b] = mean;
@@ -393,7 +391,7 @@ static void layerNormForward(LayerNorm* norm, Matrix* input, Matrix* output) {
         sum = 0.0;
         for (i = 0; i < n; ++i) {
             float diff = x[i] - mean;
-            sum += diff * diff;
+            sum = sum + diff * diff;
         }
         float variance = (float)(sum / n);
         float invStd = 1.0f / sqrtf(variance + epsilon);
@@ -434,7 +432,7 @@ static void layerNormBackward(LayerNorm* norm, Matrix* outputGrad, Matrix* input
             double dgamma_sum = 0.0, dbeta_sum = 0.0;
             for (i = 0; i < n; ++i) {
                 float gamma = getMatrix(norm->gamma, 0, i);
-                dgamma_sum += dy[i] * gamma;
+                dgamma_sum = dgamma_sum + dy[i] * gamma;
             }
             
             for (i = 0; i < n; ++i) {
@@ -472,7 +470,7 @@ static void rmspropUpdate(RMSprop* opt, float* params, float* grads) {
     size_t i;
     for (i = 0; i < opt->nParams; ++i) {
         opt->r[i] = opt->decay * opt->r[i] + (1.0f - opt->decay) * grads[i] * grads[i];
-        params[i] -= opt->learningRate * grads[i] / sqrtf(opt->r[i] + opt->epsilon);
+        params[i] = params[i] - opt->learningRate * grads[i] / sqrtf(opt->r[i] + opt->epsilon);
     }
 }
 

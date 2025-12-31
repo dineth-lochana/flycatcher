@@ -105,7 +105,7 @@ void softmax(Matrix* input) {
         for (j = 0; j < input->cols; j++) {
             float expVal = expf(getMatrix(input, i, j) - maxVal);
             setMatrix(input, i, j, expVal);
-            summed += expVal;
+            summed = summed + expVal;
         }
         
         float invSum = 1.0f / summed;
