@@ -130,49 +130,43 @@ Network* createNetwork(size_t numFeatures, size_t numHiddenLayers,
 
 void forwardPass(Network* network, Matrix* input) {
     assert(input->cols == network->layers[0]->size);
+    
     size_t batchSize = input->rows;
     ensureBatchCapacity(network, batchSize);
 
+    // Update row count of buffers to match current batch size
     size_t l;
     for(l = 0; l < network->numLayers; l++) {
         network->layerBuffers[l]->rows = batchSize;
     }
     
+    // Copy input to first layer buffer
     copyValuesInto(input, network->layerBuffers[0]);
     
     size_t i, j, k;
-    float sum;
-    float* from_row;
-    float* to_row;
-    float* weight_col;
-    
     for (i = 0; i < network->numConnections; i++) {
         Matrix* fromBuffer = network->layerBuffers[i];
         Matrix* toBuffer = network->layerBuffers[i + 1];
         Connection* conn = network->connections[i];
-        Activation act = network->layers[i + 1]->activation;
-        /* Fused: MatMul + Bias + Activation */
+        
+        // toBuffer = fromBuffer * weights
+        multiplyInto(fromBuffer, conn->weights, toBuffer);
+        
+        // Add bias to each row
         for (j = 0; j < batchSize; j++) {
-            from_row = fromBuffer->data + j * fromBuffer->stride;
-            to_row = toBuffer->data + j * toBuffer->stride;
-            /* Compute: output = input * weights + bias */
-            for (k = 0; k < conn->weights->cols; k++) {
-                size_t w;
-                sum = conn->bias->data[k];  /* Start with bias */
-                weight_col = conn->weights->data + k;
-                /* Dot product with stride jumps */
-                for (w = 0; w < conn->weights->rows; w++) {
-                    sum = sum + (from_row[w] * weight_col[w * conn->weights->stride]);
-                }
-                to_row[k] = sum;
+            for (k = 0; k < conn->bias->cols; k++) {
+                setMatrix(toBuffer, j, k, 
+                         getMatrix(toBuffer, j, k) + getMatrix(conn->bias, 0, k));
             }
         }
-        /* Apply activation in-place */
-        if (act != NULL) {
-            act(toBuffer);
+        
+        // Apply activation
+        if (network->layers[i + 1]->activation != NULL) {
+            network->layers[i + 1]->activation(toBuffer);
         }
     }
-    /* Legacy compatibility */
+    
+    // For single examples, copy back to layer->input for legacy access
     if (batchSize == 1) {
         for (i = 0; i < network->numLayers; i++) {
             copyValuesInto(network->layerBuffers[i], network->layers[i]->input);
