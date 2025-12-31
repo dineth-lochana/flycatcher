@@ -224,9 +224,10 @@ void batchGradientDescent(Network* network, DataSet* data, DataSet* classes,
     Matrix* exampleView = createMatrixView(1, data->cols, data->cols, NULL);
     Matrix* targetView = createMatrixView(1, classes->cols, classes->cols, NULL);
     
-    size_t numBatches = (data->rows + batchSize - 1) / batchSize;
+    size_t numBatches = (data->rows + batchSize - 1) / batchSize; // Ceiling division
     int epoch;
     
+    // Corrected loop structure: maxIters represents Epochs
     for (epoch = 1; epoch <= maxIters; epoch++) {
         if (shuffle != 0) {
             shuffleTogether(data, classes);
@@ -246,6 +247,7 @@ void batchGradientDescent(Network* network, DataSet* data, DataSet* classes,
             }
             
             size_t t;
+            // Accumulate gradients over the batch
             for (t = 0; t < curBatchSize; t++) {
                 size_t exampleIdx = batchStart + t;
                 
@@ -255,95 +257,67 @@ void batchGradientDescent(Network* network, DataSet* data, DataSet* classes,
                 forwardPass(network, exampleView);
                 
                 int layer;
-                size_t j, k;
                 for (layer = (int)network->numLayers - 1; layer > 0; layer--) {
                     Connection* conn = network->connections[layer - 1];
-                    float* layerOutput = network->layerBuffers[layer]->data;
-                    float* layerError = buf->errors[layer]->data;
-                    size_t errorSize = buf->errors[layer]->cols;
+                    Matrix* layerOutput = network->layerBuffers[layer];
+                    Matrix* layerError = buf->errors[layer];
                     
                     if (layer == (int)network->numLayers - 1) {
-                        /* Output layer - direct array access */
-                        for (j = 0; j < errorSize; j++) {
-                            float output = layerOutput[j];
+                        size_t j;
+                        for (j = 0; j < layerError->cols; j++) {
+                            float output = getMatrix(layerOutput, 0, j);
                             float target = targetView->data[j];
+                            
+                            // FIX: Calculate derivative of cost function correctly
                             float errorTerm = output - target;
                             
                             if (lossFunction == MEAN_SQUARED_ERROR) {
+                                // For MSE, delta = (a - y) * f'(z)
+                                // Exception: If activation is Linear, f'(z)=1, so (a-y) is fine.
+                                // If activation is Softmax, we generally assume CE, but if forced to MSE:
+                                // Softmax derivative is complex (Jacobian), usually not supported well in 
+                                // simple element-wise libs. We skip deriv for Softmax to keep it simple 
+                                // (or rely on user not to mix MSE+Softmax).
+                                // But for Sigmoid/Tanh/Relu + MSE, we MUST multiply by deriv.
                                 if (network->layers[layer]->activation != softmax) {
                                     float (*deriv)(float) = activationDerivative(network->layers[layer]->activation);
                                     errorTerm = errorTerm * deriv(output);
                                 }
                             }
+                            // For CrossEntropy + Softmax, delta = (a - y). 
+                            // This code assumes the "Canonical Link" simplification.
                             
-                            layerError[j] = errorTerm;
+                            layerError->data[j] = errorTerm;
                         }
                         
-                        /* Gradient accumulation - optimized */
-                        float* prevOutput = network->layerBuffers[layer - 1]->data;
-                        size_t prevSize = network->layerBuffers[layer - 1]->cols;
-                        float* dW_data = buf->dW[layer - 1]->data;
-                        size_t dW_stride = buf->dW[layer - 1]->stride;
-                        
-                        /* Outer product: prevOutput^T * layerError */
-                        for (j = 0; j < prevSize; j++) {
-                            float prev_val = prevOutput[j];
-                            float* dW_row = dW_data + j * dW_stride;
-                            for (k = 0; k < errorSize; k++) {
-                                dW_row[k] = prev_val * layerError[k];
-                            }
-                        }
-                        
-                        /* Bias gradient */
-                        memcpy(buf->db[layer - 1]->data, layerError, errorSize * sizeof(float));
+                        Matrix* prevOutput = network->layerBuffers[layer - 1];
+                        transposeInto(prevOutput, buf->beforeOutputT);
+                        multiplyInto(buf->beforeOutputT, layerError, buf->dW[layer - 1]);
+                        copyValuesInto(layerError, buf->db[layer - 1]);
                         
                     } else {
-                        /* Hidden layer */
                         size_t hiddenIdx = (size_t)(layer - 1);
                         Connection* nextConn = network->connections[layer];
                         
-                        /* Error backprop: error = nextError * weights^T */
-                        float* nextError = buf->errors[layer + 1]->data;
-                        size_t nextErrorSize = buf->errors[layer + 1]->cols;
-                        float* weights = nextConn->weights->data;
-                        size_t weights_stride = nextConn->weights->stride;
+                        transposeInto(nextConn->weights, buf->weightsT[hiddenIdx]);
+                        multiplyInto(buf->errors[layer + 1], buf->weightsT[hiddenIdx], 
+                                    buf->errorTemp[hiddenIdx]);
                         
-                        memset(layerError, 0, errorSize * sizeof(float));
-                        
-                        for (j = 0; j < errorSize; j++) {
-                            float sum = 0.0f;
-                            float* weight_col = weights + j;
-                            for (k = 0; k < nextErrorSize; k++) {
-                                sum = sum + (nextError[k] * weight_col[k * weights_stride]);
-                            }
-                            layerError[j] = sum;
-                        }
-                        
-                        /* Apply activation derivative */
                         float (*deriv)(float) = activationDerivative(conn->to->activation);
-                        for (j = 0; j < errorSize; j++) {
-                            layerError[j] = layerError[j] * deriv(layerOutput[j]);
+                        size_t j;
+                        for (j = 0; j < buf->fprime[hiddenIdx]->cols; j++) {
+                            buf->fprime[hiddenIdx]->data[j] = deriv(getMatrix(layerOutput, 0, j));
                         }
                         
-                        /* Gradient computation - optimized */
-                        float* prevOutput = network->layerBuffers[layer - 1]->data;
-                        size_t prevSize = network->layerBuffers[layer - 1]->cols;
-                        float* dW_data = buf->dW[layer - 1]->data;
-                        size_t dW_stride = buf->dW[layer - 1]->stride;
+                        hadamardInto(buf->errorTemp[hiddenIdx], buf->fprime[hiddenIdx], layerError);
                         
-                        for (j = 0; j < prevSize; j++) {
-                            float prev_val = prevOutput[j];
-                            float* dW_row = dW_data + j * dW_stride;
-                            for (k = 0; k < errorSize; k++) {
-                                dW_row[k] = prev_val * layerError[k];
-                            }
-                        }
-                        
-                        memcpy(buf->db[layer - 1]->data, layerError, errorSize * sizeof(float));
+                        Matrix* prevOutput = network->layerBuffers[layer - 1];
+                        transposeInto(prevOutput, buf->inputT[hiddenIdx]);
+                        multiplyInto(buf->inputT[hiddenIdx], layerError, buf->dW[layer - 1]);
+                        copyValuesInto(layerError, buf->db[layer - 1]);
                     }
                 }
                 
-                /* Accumulate gradients */
                 size_t i;
                 for (i = 0; i < network->numConnections; i++) {
                     addTo(buf->dW[i], buf->dW_avg[i]);
@@ -353,8 +327,9 @@ void batchGradientDescent(Network* network, DataSet* data, DataSet* classes,
                 zeroGradients(buf);
             }
             
-            /* Apply updates at end of batch */
+            // Apply updates at end of batch
             size_t i;
+            // Scale gradients by batch size (Average Gradient)
             float scale = 1.0f / (float)curBatchSize;
             
             for (i = 0; i < network->numConnections; i++) {
@@ -366,30 +341,42 @@ void batchGradientDescent(Network* network, DataSet* data, DataSet* classes,
                 scalarMultiply(gradW, scale);
                 scalarMultiply(gradB, scale);
 
+                // Add regularization term to gradient: w = w - lr * (grad + lambda * w)
                 if (regularizationStrength > 0.0f) {
                      copyValuesInto(weights, buf->reg[i]);
                      scalarMultiply(buf->reg[i], regularizationStrength);
                      addTo(buf->reg[i], gradW);
                 }
                 
+                // Apply Learning Rate to the total gradient direction
                 scalarMultiply(gradW, currentLearningRate);
                 scalarMultiply(gradB, currentLearningRate);
+                // Now gradW is (lr * gradient_total)
 
                 if (momentumFactor > 0.0f) {
                     Matrix* velocityW = buf->dW_momentum[i];
                     Matrix* velocityB = buf->db_momentum[i];
+
+                    // v = mu * v - lr * grad
+                    // Here 'gradW' contains (lr * grad). We want to SUBTRACT it.
+                    // So: v = mu * v + (-gradW)
                     
+                    // 1. Decay velocity
                     scalarMultiply(velocityW, momentumFactor);
                     scalarMultiply(velocityB, momentumFactor);
                     
+                    // 2. Subtract scaled gradient
                     scalarMultiply(gradW, -1.0f);
                     scalarMultiply(gradB, -1.0f);
                     addTo(gradW, velocityW);
                     addTo(gradB, velocityB);
                     
+                    // 3. Update weights: w = w + v
                     addTo(velocityW, weights);
                     addTo(velocityB, bias);
                 } else {
+                    // Standard SGD: w = w - lr * grad
+                    // gradW is already (lr * grad).
                     scalarMultiply(gradW, -1.0f);
                     scalarMultiply(gradB, -1.0f);
                     
@@ -401,6 +388,7 @@ void batchGradientDescent(Network* network, DataSet* data, DataSet* classes,
             zeroAverages(buf);
         }
         
+        // Verbose logging check per Epoch (not per batch)
         if (verbose != 0) {
             if (epoch % 10 == 0 || epoch == 1 || epoch == maxIters) {
                 forwardPassDataSet(network, data);
