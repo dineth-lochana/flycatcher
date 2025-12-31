@@ -377,24 +377,10 @@ Matrix* add(Matrix* A, Matrix* B) {
 
 void addTo(Matrix* from, Matrix* to) {
     assert(from->rows == to->rows && from->cols == to->cols);
-    if (from->stride == from->cols && to->stride == to->cols) {
-        /* Contiguous memory - vectorizable loop */
-        size_t total = from->rows * from->cols;
-        size_t i;
-        for (i = 0; i < total; i++) {
-            to->data[i] = to->data[i] + from->data[i];
-        }
-    } else {
-        /* Strided memory */
-        size_t i, j;
-        float* from_row;
-        float* to_row;
-        for (i = 0; i < from->rows; i++) {
-            from_row = from->data + i * from->stride;
-            to_row = to->data + i * to->stride;
-            for (j = 0; j < from->cols; j++) {
-                to_row[j] = to_row[j] + from_row[j];
-            }
+    size_t i, j;
+    for (i = 0; i < from->rows; i++) {
+        for (j = 0; j < from->cols; j++) {
+            setMatrix(to, i, j, getMatrix(from, i, j) + getMatrix(to, i, j));
         }
     }
 }
@@ -424,20 +410,11 @@ void addToEachRowInto(Matrix* A, Matrix* B, Matrix* into) {
 }
 
 void scalarMultiply(Matrix* orig, float c) {
-    if (orig->stride == orig->cols) {
-        size_t total = orig->rows * orig->cols;
-        size_t i;
-        for (i = 0; i < total; i++) {
-            orig->data[i] = orig->data[i] * c;
-        }
-    } else {
-        size_t i, j;
-        float* row;
-        for (i = 0; i < orig->rows; i++) {
-            row = orig->data + i * orig->stride;
-            for (j = 0; j < orig->cols; j++) {
-                row[j] = row[j] * c;
-            }
+    size_t i, j;
+    for (i = 0; i < orig->rows; i++) {
+        for (j = 0; j < orig->cols; j++) {
+            float val = getMatrix(orig, i, j);
+            setMatrix(orig, i, j, val * c);
         }
     }
 }
@@ -462,32 +439,14 @@ Matrix* multiply(Matrix* A, Matrix* B) {
 void multiplyInto(Matrix* A, Matrix* B, Matrix* into) {
     assert(A->cols == B->rows);
     assert(A->rows == into->rows && B->cols == into->cols);
-    
     size_t i, j, k;
-    float sum;
-    float* a_row;
-    float* b_col_base;
-    float* into_row;
-    
-    /* Zero output first */
-    if (into->stride == into->cols) {
-        memset(into->data, 0, into->rows * into->cols * sizeof(float));
-    } else {
-        for (i = 0; i < into->rows; i++) {
-            memset(into->data + i * into->stride, 0, into->cols * sizeof(float));
-        }
-    }
-    /* Outer loop over A rows, inner over B cols */
     for (i = 0; i < A->rows; i++) {
-        a_row = A->data + i * A->stride;
-        into_row = into->data + i * into->stride;
-        for (k = 0; k < A->cols; k++) {
-            float a_val = a_row[k];
-            float* b_row = B->data + k * B->stride;
-            /* Vectorizable inner loop */
-            for (j = 0; j < B->cols; j++) {
-                into_row[j] = into_row[j] + (a_val * b_row[j]);
+        for (j = 0; j < B->cols; j++) {
+            float sum = 0;
+            for (k = 0; k < B->rows; k++) {
+                sum = sum + (getMatrix(A, i, k) * getMatrix(B, k, j));
             }
+            setMatrix(into, i, j, sum);
         }
     }
 }
