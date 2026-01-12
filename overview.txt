@@ -1,0 +1,67 @@
+Leaf Trait Syndrome Classification
+
+Problem: Classify into discrete trait syndromes (sclerophyll, mesophyll, etc.)
+Why neglected: Continuous traits are fashionable; discrete syndromes are "old school"
+Features: SLA, LDMC, leaf N, leaf P, toughness
+Actually interesting: Are functional types real or artifacts?
+Goal from this research can be to find novel ways to handle models even with incomplete data.
+
+
+
+
+
+Since TRY is incomplete, we will be going with AusTraits
+
+Example AusTraits (first few rows)
+
+dataset_id	taxon_name	observation_id	trait_name	value	unit	entity_type	value_type	basis_of_value	replicates	basis_of_record	life_stage	population_id	individual_id	repeat_measurements_id	temporal_context_id	source_id	location_id	entity_context_id	plot_context_id	treatment_context_id	collection_date	measurement_remarks	method_id	method_context_id	original_name
+ABRS_1981	Acanthocarpus canaliculatus	1	leaf_compoundness	simple		species	mode	expert_score		preserved_specimen	adult				1						unknown/2015		1		Acanthocarpus canaliculatus
+ABRS_1981	Acanthocarpus canaliculatus	1	seed_length	3	mm	species	maximum	measurement		preserved_specimen	adult				1						unknown/2015		1		Acanthocarpus canaliculatus
+ABRS_1981	Acanthocarpus humilis	2	leaf_compoundness	simple		species	mode	expert_score		preserved_specimen	adult				1						unknown/2015		1		Acanthocarpus humilis
+ABRS_1981	Acanthocarpus parviflorus	3	leaf_compoundness	simple		species	mode	expert_score		preserved_specimen	adult				1						unknown/2015		1		Acanthocarpus parviflorus
+ABRS_1981	Acanthocarpus preissii	4	leaf_compoundness	simple		species	mode	expert_score		preserved_specimen	adult				1						unknown/2015		1		Acanthocarpus preissii
+ABRS_1981	Acanthocarpus preissii	4	seed_length	4	mm	species	minimum	measurement		preserved_specimen	adult				1						unknown/2015		1		Acanthocarpus preissii
+ABRS_1981	Acanthocarpus preissii	4	seed_length	5	mm	species	maximum	measurement		preserved_specimen	adult				1						unknown/2015		1		Acanthocarpus preissii
+ABRS_1981	Acanthocarpus robustus	5	leaf_compoundness	simple		species	mode	expert_score		preserved_specimen	adult				1						unknown/2015		1		Acanthocarpus robustus
+ABRS_1981	Acanthocarpus rupestris	6	leaf_compoundness	simple		species	mode	expert_score		preserved_specimen	adult				1						unknown/2015		1		Acanthocarpus rupestris
+
+
+
+
+
+Then we will be looking at the following Techiniques
+
+1. Cascade-Correlation Networks (Fahlman & Lebiere, 1990)
+Why forgotten: Completely superseded by backprop + SGD variants. Nobody uses this anymore.
+What it was: Networks that grow during training - start with zero hidden units, add neurons one at a time when learning plateaus
+Research angle: "Can cascade-correlation outperform fixed-architecture tiny NNs in resource-constrained environments?" Study if dynamic architecture growth beats pre-sized TINN for small models
+Why interesting: TINN is fixed architecture - you could implement cascading on top of it
+Data: Any classification benchmark (MNIST subset, UCI datasets)
+
+2. Restricted Coulomb Energy (RCE) Networks
+
+Why forgotten: Pre-deep learning pattern recognition method from late 80s. Dead end.
+What it was: Prototype-based learning with "commitment" and "shrinking" - creates spherical decision regions
+Research angle: Compare RCE vs TINN for few-shot learning scenarios
+Feasible: Simple distance calculations, threshold logic
+Modern twist: Hybrid RCE-TINN where RCE handles outliers, TINN handles main distribution
+
+3. Counterpropagation Networks (Hecht-Nielsen, 1987)
+
+Why forgotten: Combination of Kohonen layer + Grossberg layer. Nobody teaches this anymore.
+What it was: Unsupervised + supervised hybrid, supposed to be faster than backprop
+Research angle: "Rediscovering counterpropagation: When does vector quantization + interpolation beat gradient descent for tiny models?"
+Very feasible: Self-organizing map feeding into linear output layer
+
+4. Adaptive Resonance Theory (ART) Networks - ART1/ART2
+
+Why forgotten: Complicated vigilance parameters, superseded by better clustering
+What it was: Grossberg's solution to stability-plasticity dilemma - incremental learning without catastrophic forgetting
+Research angle: "ART networks for continual learning on microcontrollers" - compare against TINN with naive fine-tuning
+Modern relevance: Catastrophic forgetting is hot again, but nobody looks at ART anymore
+Challenge: Somewhat complex to implement, but doable
+
+
+
+
+
